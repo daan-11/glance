@@ -16,7 +16,9 @@ jobs:
       contents: read
     env:
       HOMELAB_HOST: home-lab.vulture-qilin.ts.net
-      HOMELAB_USER: derksen
+      HOMELAB_USER: root
+      APPS_HELM_DIR: /home/derksen/k3s/apps-helm
+      APPS_HELM_GIT_TOKEN: ${{ secrets.APPS_HELM_GIT_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

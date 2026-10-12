@@ -23,9 +23,10 @@ Pushes to `main`, and manual runs, sync the chart to the home-lab:
 
 `image.tag` stays `latest`. The bumped field is the chart version, because there is no image to import with `k3s ctr`.
 
-Add these Actions secrets on this repository (the same OAuth client Chronoflow uses):
+Add these Actions secrets on this repository (the same ones Chronoflow uses):
 
 - `TS_OAUTH_CLIENT_ID`
 - `TS_OAUTH_SECRET`
+- `APPS_HELM_GIT_TOKEN`
 
-The workflow SSHes with Tailscale SSH as `derksen` to `home-lab.vulture-qilin.ts.net`.
+The workflow SSHes with Tailscale SSH as `root` to `home-lab.vulture-qilin.ts.net`, updates `/home/derksen/k3s/apps-helm`, and uses `APPS_HELM_GIT_TOKEN` as the Gitea `oauth2` user for `git pull` and `git push`.
