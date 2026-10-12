@@ -1,0 +1,35 @@
+name: Deploy home-lab
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-home-lab
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HOMELAB_HOST: home-lab.vulture-qilin.ts.net
+      HOMELAB_USER: root
+      APPS_HELM_DIR: /home/derksen/k3s/apps-helm
+      APPS_HELM_GIT_TOKEN: ${{ secrets.APPS_HELM_GIT_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          targets: home-lab.vulture-qilin.ts.net
+
+      - name: Sync chart into apps-helm
+        run: ./deploy/sync-apps-helm.sh

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: glance
+description: Helm chart for Glance
+type: application
+version: 0.1.0
+appVersion: "0.8.4"
