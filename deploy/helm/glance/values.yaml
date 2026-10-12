@@ -1,0 +1,101 @@
+replicaCount: 1
+
+image:
+  repository: glanceapp/glance
+  tag: latest
+  pullPolicy: IfNotPresent
+
+containerPort: 8080
+revisionHistoryLimit: 2
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+config: |
+  pages:
+    - name: Home
+      columns:
+
+        - size: small
+          widgets:
+            - type: clock
+            - type: calendar
+
+        - size: full
+          widgets:
+
+            - type: monitor
+              title: Services Status
+              cache: 1m
+              sites:
+                - title: Gitea
+                  url: http://10.43.239.83
+                  icon: si:gitea
+
+                - title: Grafana
+                  url: http://10.43.149.150
+                  icon: si:grafana
+
+                - title: Argo
+                  url: http://10.43.17.234
+                  icon: si:argo
+
+                - title: ChronoFlow
+                  url: http://10.43.33.188
+                  icon: si:clockify
+
+                - title: Cyberline
+                  url: http://10.43.243.101
+                  icon: si:cypress
+
+                - title: KubeCare
+                  url: http://10.43.240.63:8080
+                  icon: si:kubernetes
+
+                - title: Automagisch
+                  url: http://10.43.18.5
+                  icon: mdi:auto-fix
+
+            - type: bookmarks
+              title: Services
+              columns: 3
+              groups:
+                - title: Applications
+                  color: 36 90 51
+                  links:
+                    - title: Gitea
+                      url: https://gitea.vulture-qilin.ts.net
+                      icon: si:gitea
+
+                    - title: Grafana
+                      url: https://grafana.vulture-qilin.ts.net
+                      icon: si:grafana
+
+                    - title: Argo
+                      url: https://argo.vulture-qilin.ts.net
+                      icon: si:argo
+
+                - title: Applications
+                  color: 243 79 61
+                  links:
+                    - title: ChronoFlow
+                      url: https://chronoflow.vulture-qilin.ts.net
+                      icon: si:clockify
+
+                    - title: Cyberline
+                      url: https://cyberline.nl
+                      icon: si:cypress
+
+                    - title: KubeCare
+                      url: https://kubecare.vulture-qilin.ts.net
+                      icon: si:kubernetes
+
+                    - title: Automagisch
+                      url: https://automagisch.vulture-qilin.ts.net
+                      icon: mdi:auto-fix
+            # ⭐ Hacker News Widget (Full Size)
+            - type: hacker-news
+              title: Hacker News
+              limit: 15
+              collapse-after: 3
