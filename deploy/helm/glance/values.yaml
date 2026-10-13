@@ -25,8 +25,8 @@ config: |
         - size: full
           widgets:
 
-            # Status checks are HTTP GETs. UDP game ports use that same
-            # monitor mechanism; they are not given a public link.
+            # Status checks are HTTP GETs. The game ports are UDP, so they are
+            # not probed — an HTTP GET only times out.
             - type: split-column
               max-columns: 3
               widgets:
@@ -55,14 +55,6 @@ config: |
                   title: Hosting
                   cache: 1m
                   sites:
-                    - title: Zomboid server
-                      url: http://10.43.246.139:16261
-                      icon: mdi:controller
-
-                    - title: Zomboid server 16262
-                      url: http://10.43.246.139:16262
-                      icon: mdi:controller
-
                     - title: Zomboid panel
                       url: http://10.43.11.113:3001
                       icon: mdi:monitor-dashboard
@@ -86,6 +78,24 @@ config: |
                     - title: Brief
                       url: http://10.43.175.156:80
                       icon: mdi:text-box-outline
+
+            - type: html
+              source: |
+                <div class="widget">
+                  <div class="widget-header">
+                    <h2 class="uppercase">Zomboid server</h2>
+                  </div>
+                  <div class="widget-content">
+                    <div class="flex items-center gap-15">
+                      <img class="monitor-site-icon flat-icon" src="https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg/controller.svg" alt="">
+                      <ul class="list-horizontal-text">
+                        <li>10.43.246.139</li>
+                        <li>16261/UDP</li>
+                        <li>16262/UDP</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
 
             - type: bookmarks
               title: Services
