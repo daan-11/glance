@@ -25,43 +25,73 @@ config: |
         - size: full
           widgets:
 
-            - type: monitor
-              title: Services Status
-              cache: 1m
-              sites:
-                - title: Gitea
-                  url: http://10.43.239.83
-                  icon: si:gitea
+            # Status checks are HTTP GETs. UDP game ports use that same
+            # monitor mechanism; they are not given a public link.
+            - type: split-column
+              max-columns: 3
+              widgets:
 
-                - title: Grafana
-                  url: http://10.43.149.150
-                  icon: si:grafana
+                - type: monitor
+                  title: Infra
+                  cache: 1m
+                  sites:
+                    - title: Gitea
+                      url: http://10.43.239.83
+                      icon: si:gitea
 
-                - title: Argo
-                  url: http://10.43.17.234
-                  icon: si:argo
+                    - title: Grafana
+                      url: http://10.43.149.150
+                      icon: si:grafana
 
-                - title: ChronoFlow
-                  url: http://10.43.33.188
-                  icon: si:clockify
+                    - title: Argo
+                      url: http://10.43.17.234
+                      icon: si:argo
 
-                - title: Cyberline
-                  url: http://10.43.243.101
-                  icon: si:cypress
+                    - title: KubeCare
+                      url: http://10.43.240.63:8080
+                      icon: si:kubernetes
 
-                - title: KubeCare
-                  url: http://10.43.240.63:8080
-                  icon: si:kubernetes
+                - type: monitor
+                  title: Hosting
+                  cache: 1m
+                  sites:
+                    - title: Zomboid server
+                      url: http://10.43.246.139:16261
+                      icon: mdi:controller
 
-                - title: Automagisch
-                  url: http://10.43.18.5
-                  icon: mdi:auto-fix
+                    - title: Zomboid server 16262
+                      url: http://10.43.246.139:16262
+                      icon: mdi:controller
+
+                    - title: Zomboid panel
+                      url: http://10.43.11.113:3001
+                      icon: mdi:monitor-dashboard
+
+                - type: monitor
+                  title: Applications
+                  cache: 1m
+                  sites:
+                    - title: ChronoFlow
+                      url: http://10.43.182.225:80
+                      icon: si:clockify
+
+                    - title: Cyberline
+                      url: http://10.43.243.101
+                      icon: si:cypress
+
+                    - title: Automagisch
+                      url: http://10.43.18.5
+                      icon: mdi:auto-fix
+
+                    - title: Brief
+                      url: http://10.43.175.156:80
+                      icon: mdi:text-box-outline
 
             - type: bookmarks
               title: Services
               columns: 3
               groups:
-                - title: Applications
+                - title: Infra
                   color: 36 90 51
                   links:
                     - title: Gitea
@@ -76,6 +106,17 @@ config: |
                       url: https://argo.vulture-qilin.ts.net
                       icon: si:argo
 
+                    - title: KubeCare
+                      url: https://kubecare.vulture-qilin.ts.net
+                      icon: si:kubernetes
+
+                - title: Hosting
+                  color: 168 55 42
+                  links:
+                    - title: Zomboid panel
+                      url: https://pz-panel.vulture-qilin.ts.net
+                      icon: mdi:monitor-dashboard
+
                 - title: Applications
                   color: 243 79 61
                   links:
@@ -87,13 +128,14 @@ config: |
                       url: https://cyberline.nl
                       icon: si:cypress
 
-                    - title: KubeCare
-                      url: https://kubecare.vulture-qilin.ts.net
-                      icon: si:kubernetes
-
                     - title: Automagisch
                       url: https://automagisch.vulture-qilin.ts.net
                       icon: mdi:auto-fix
+
+                    - title: Brief
+                      url: https://brief.vulture-qilin.ts.net
+                      icon: mdi:text-box-outline
+
             # ⭐ Hacker News Widget (Full Size)
             - type: hacker-news
               title: Hacker News
