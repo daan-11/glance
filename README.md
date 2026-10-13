@@ -29,4 +29,4 @@ Add these Actions secrets on this repository (the same ones Chronoflow uses):
 - `TS_OAUTH_SECRET`
 - `APPS_HELM_GIT_TOKEN`
 
-The workflow SSHes with Tailscale SSH as `root` to `home-lab.vulture-qilin.ts.net`, updates `/home/derksen/k3s/apps-helm`, and uses `APPS_HELM_GIT_TOKEN` as the Gitea `oauth2` user for `git pull` and `git push`.
+The workflow SSHes with Tailscale SSH as `root` to `home-lab.vulture-qilin.ts.net` and updates `/home/derksen/k3s/apps-helm`. `APPS_HELM_GIT_TOKEN` is sent as HTTP Basic auth (user `oauth2`) on the origin URL stored in that repo. The URL is not rebuilt, so an `insteadOf` rule cannot move the Gitea host into the path.
