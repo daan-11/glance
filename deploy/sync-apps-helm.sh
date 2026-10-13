@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copy deploy/helm/glance into /home/derksen/k3s/apps-helm/glance on the home-lab
 # (flattened), bump the chart version, and push main as root.
-# APPS_HELM_GIT_TOKEN authenticates the Gitea pull and push (oauth2 user).
+# APPS_HELM_GIT_TOKEN is sent as HTTP Basic auth (user oauth2) on the raw origin URL.
 # Glance has no image build: k3s pulls glanceapp/glance itself.
 set -euo pipefail
 
@@ -23,15 +23,62 @@ stamp_version() {
   sed -i -E "s/^(version:[[:space:]]+\"?)[^\"[:space:]]+/\1${version}/" "$file"
 }
 
-# Gitea accepts the token as the oauth2 user. Existing userinfo is replaced.
-git_auth_url() {
+# Drop userinfo. Also repair "user:pass@/host/path", which has an empty host
+# because an insteadOf rule rewrote http://host into http://user:pass@/host.
+strip_userinfo() {
   local url="$1"
-  local token="$2"
   local proto rest
-  proto="${url%%://*}"
-  rest="${url#*://}"
-  rest="${rest#*@}"
-  printf '%s://oauth2:%s@%s\n' "$proto" "$token" "$rest"
+  case "$url" in
+    http://*|https://*)
+      proto="${url%%://*}"
+      rest="${url#*://}"
+      rest="${rest#*@}"
+      rest="${rest#/}"
+      printf '%s://%s\n' "$proto" "$rest"
+      ;;
+    *)
+      printf '%s\n' "$url"
+      ;;
+  esac
+}
+
+# Pull or push using the stored origin, not a rebuilt credential URL.
+# git remote get-url applies insteadOf, and a rule that ends in "@/' makes curl
+# see http:///10.43.239.83/... (no host). Pin the raw URL so that rule cannot run.
+git_with_token() {
+  local op="$1"
+  local url basic
+  url="$(git config --get remote.origin.url)"
+  if [[ "$url" == http://* || "$url" == https://* ]]; then
+    if [ -z "${token:-}" ]; then
+      echo "APPS_HELM_GIT_TOKEN is required to sync apps-helm" >&2
+      exit 1
+    fi
+    url="$(strip_userinfo "$url")"
+    basic="$(printf 'oauth2:%s' "$token" | tr -d '\r\n' | base64 -w0)"
+    if [ "$op" = pull ]; then
+      git \
+        -c "url.${url}.insteadOf=${url}" \
+        -c "http.extraHeader=Authorization: Basic ${basic}" \
+        pull --ff-only "$url" main >&2
+    else
+      git \
+        -c "url.${url}.insteadOf=${url}" \
+        -c "http.extraHeader=Authorization: Basic ${basic}" \
+        push "$url" HEAD:main >&2
+    fi
+  elif [ "${local_mode:-0}" -eq 1 ]; then
+    if [ "$op" = pull ]; then
+      if git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
+        git pull --ff-only >&2
+      fi
+    else
+      git push >&2
+    fi
+  else
+    echo "apps-helm origin must be http(s) so APPS_HELM_GIT_TOKEN can authenticate" >&2
+    exit 1
+  fi
 }
 
 exec_remote() {
@@ -56,8 +103,8 @@ copy_chart() {
   tar -C "$src" -czf - . | tailscale ssh "$TARGET" "mkdir -p \"${dest}\" && tar -C \"${dest}\" -xzf -"
 }
 
-if [ "${1:-}" = "--auth-url" ]; then
-  git_auth_url "$2" "$3"
+if [ "${1:-}" = "--strip-url" ]; then
+  strip_userinfo "$2"
   exit 0
 fi
 
@@ -93,22 +140,13 @@ export GIT_TERMINAL_PROMPT=0
 export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=safe.directory
 export GIT_CONFIG_VALUE_0='*'
-$(declare -f git_auth_url)
+$(declare -f strip_userinfo)
+$(declare -f git_with_token)
 repo='${APPS_HELM_DIR}'
 local_mode=${local_mode}
-token="\$(printf '%s' '${token_b64}' | base64 -d)"
+token="\$(printf '%s' '${token_b64}' | base64 -d | tr -d '\r\n')"
 cd "\$repo"
-url="\$(git remote get-url origin)"
-if [[ "\$url" == http://* || "\$url" == https://* ]]; then
-  git pull --ff-only "\$(git_auth_url "\$url" "\$token")" main >&2
-elif [ "\$local_mode" -eq 1 ]; then
-  if git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
-    git pull --ff-only >&2
-  fi
-else
-  echo "apps-helm origin must be http(s) so APPS_HELM_GIT_TOKEN can authenticate" >&2
-  exit 1
-fi
+git_with_token pull
 if [ -f ${APP_NAME}/Chart.yaml ]; then
   awk '/^version:/{print \$2; exit}' ${APP_NAME}/Chart.yaml
 else
@@ -149,10 +187,11 @@ export GIT_TERMINAL_PROMPT=0
 export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=safe.directory
 export GIT_CONFIG_VALUE_0='*'
-$(declare -f git_auth_url)
+$(declare -f strip_userinfo)
+$(declare -f git_with_token)
 repo='${APPS_HELM_DIR}'
 local_mode=${local_mode}
-token="\$(printf '%s' '${token_b64}' | base64 -d)"
+token="\$(printf '%s' '${token_b64}' | base64 -d | tr -d '\r\n')"
 cd "\$repo"
 branch="\$(git rev-parse --abbrev-ref HEAD)"
 if [ "\$branch" != "main" ]; then
@@ -169,15 +208,7 @@ if git config user.email >/dev/null 2>&1; then
 else
   git -c user.name="glance-ci" -c user.email="glance-ci@localhost" commit -m "${APP_NAME}:${next}"
 fi
-url="\$(git remote get-url origin)"
-if [[ "\$url" == http://* || "\$url" == https://* ]]; then
-  git push "\$(git_auth_url "\$url" "\$token")" HEAD:main >&2
-elif [ "\$local_mode" -eq 1 ]; then
-  git push >&2
-else
-  echo "apps-helm origin must be http(s) so APPS_HELM_GIT_TOKEN can authenticate" >&2
-  exit 1
-fi
+git_with_token push
 echo "Pushed ${APP_NAME}:${next}"
 EOF
 )
