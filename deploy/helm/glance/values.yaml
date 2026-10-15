@@ -12,15 +12,17 @@ service:
   port: 80
   targetPort: 8080
 
-# Cursor Admin API key (Basic auth username, empty password). Never put the
-# key in this file. Create the Secret, then set the name below and redeploy:
-#   kubectl -n <namespace> create secret generic glance-cursor-admin \
-#     --from-literal=api-key='<team admin API key>'
-# Leave adminApiKeySecretName empty until that Secret exists. Glance still
-# starts; the spending widget shows an error instead of invented percentages.
+# One-time Cursor session seed. Never put the refresh token or user id here.
+# Create the Secret, then set the name below and redeploy. See README.
+#   kubectl -n <namespace> create secret generic glance-cursor-session \
+#     --from-literal=refresh-token='<cursorAuth/refreshToken>' \
+#     --from-literal=user-id='user_...'
+# Leave sessionSecretName empty until that Secret exists. Glance still starts;
+# the widget says the session did not refresh instead of inventing percentages.
 cursor:
-  adminApiKeySecretName: ""
-  adminApiKeySecretKey: api-key
+  sessionSecretName: ""
+  refreshTokenSecretKey: refresh-token
+  userIdSecretKey: user-id
 
 config: |
   pages:
@@ -32,61 +34,154 @@ config: |
             - type: clock
             - type: calendar
 
-            # Team spend from the Cursor Admin API (Basic auth).
-            # POST https://api.cursor.com/teams/spend
-            # The Admin API does not expose Cursor Models / Other Models /
-            # Grok Bot pool percents or their reset times.
+            # Refreshes the desktop session, then reads the usage meters.
+            # The 10m cache is the refresh schedule. The same refresh token is sent
+            # each time; Cursor's success body does not return a replacement.
+            # POST https://api2.cursor.sh/oauth/token
+            # GET  https://cursor.com/api/usage-summary
+            #   Cursor Models = individualUsage.plan.autoPercentUsed
+            #   Other Models  = individualUsage.plan.apiPercentUsed
+            #   shared reset  = billingCycleEnd
+            # POST https://cursor.com/api/dashboard/get-sand-usage-status
+            #   Grok Bot      = usagePercent
+            #   weekly reset  = nextResetTimestampUtc
             - type: custom-api
               title: Cursor
-              cache: 1h
-              url: https://api.cursor.com/teams/spend
+              cache: 10m
+              url: https://api2.cursor.sh/oauth/token
               method: POST
-              body-type: json
-              body:
-                page: 1
-                pageSize: 100
-              basic-auth:
-                username: "${CURSOR_ADMIN_API_KEY}"
-                password: ""
+              body-type: string
+              body: |-
+                {"grant_type":"refresh_token","client_id":"KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB","refresh_token":"${CURSOR_REFRESH_TOKEN}"}
               headers:
                 Accept: application/json
+                Content-Type: application/json
               template: |
-                {{ if ne .Response.StatusCode 200 }}
-                <p class="color-negative size-h5">Spend did not load (HTTP {{ .Response.StatusCode }}). Set CURSOR_ADMIN_API_KEY.</p>
-                {{ else if not (.JSON.Exists "teamMemberSpend") }}
-                <p class="color-negative size-h5">Admin API response has no team spend.</p>
+                {{ $access := .JSON.String "access_token" }}
+                {{ if or (ne .Response.StatusCode 200) (.JSON.Bool "shouldLogout") (eq $access "") }}
+                <p class="color-negative size-h5">Session did not refresh. Copy cursorAuth/refreshToken into the glance-cursor-session secret again.</p>
+                {{ else if eq "${CURSOR_USER_ID}" "" }}
+                <p class="color-negative size-h5">Set CURSOR_USER_ID to the user_ id from the Cursor session.</p>
                 {{ else }}
-                {{ $onDemand := 0.0 }}
-                {{ $overall := 0.0 }}
-                {{ $limit := 0.0 }}
-                {{ range .JSON.Array "teamMemberSpend" }}
-                  {{ $onDemand = add $onDemand (.Float "spendCents") }}
-                  {{ $overall = add $overall (.Float "overallSpendCents") }}
-                  {{ if gt (.Float "effectivePerUserLimitDollars") 0.0 }}
-                    {{ $limit = add $limit (.Float "effectivePerUserLimitDollars") }}
+                {{ $cookie := concat "WorkosCursorSessionToken=${CURSOR_USER_ID}%3A%3A" $access }}
+                {{ $usage := newRequest "https://cursor.com/api/usage-summary" | withHeader "Accept" "application/json" | withHeader "Cookie" $cookie | withHeader "Origin" "https://cursor.com" | withHeader "Referer" "https://cursor.com/dashboard" | getResponse }}
+                {{ if or (ne $usage.Response.StatusCode 200) (not ($usage.JSON.Exists "individualUsage.plan.autoPercentUsed")) (not ($usage.JSON.Exists "individualUsage.plan.apiPercentUsed")) }}
+                <p class="color-negative size-h5">Plan usage did not load.</p>
+                {{ else }}
+                {{ $planEndRaw := $usage.JSON.String "billingCycleEnd" }}
+                {{ $planReset := now }}
+                {{ if findMatch "^[0-9]{13,}$" $planEndRaw }}
+                  {{ $planReset = printf "%d" (div ($usage.JSON.Int "billingCycleEnd") 1000) | parseTime "unix" }}
+                {{ else if findMatch "^[0-9]{9,12}$" $planEndRaw }}
+                  {{ $planReset = $planEndRaw | parseTime "unix" }}
+                {{ else if ne $planEndRaw "" }}
+                  {{ $planReset = $planEndRaw | parseTime "rfc3339" }}
+                {{ end }}
+                {{ $auto := $usage.JSON.Float "individualUsage.plan.autoPercentUsed" }}
+                {{ $api := $usage.JSON.Float "individualUsage.plan.apiPercentUsed" }}
+                {{ if lt $auto 0.0 }}{{ $auto = 0.0 }}{{ end }}
+                {{ if lt $api 0.0 }}{{ $api = 0.0 }}{{ end }}
+                {{ $autoShown := printf "%.0f" $auto }}
+                {{ $apiShown := printf "%.0f" $api }}
+                {{ $autoBar := $autoShown }}
+                {{ $apiBar := $apiShown }}
+                {{ if gt $auto 100.0 }}{{ $autoBar = "100" }}{{ end }}
+                {{ if gt $api 100.0 }}{{ $apiBar = "100" }}{{ end }}
+                <div class="flex justify-between items-end">
+                  <div>
+                    <div class="color-highlight">Cursor Models</div>
+                    <div class="size-h6 color-subdue">Includes Cursor Grok and Composer</div>
+                  </div>
+                  <div class="size-h3 color-highlight">{{ $autoShown }}<span class="color-base size-h5">%</span></div>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-value{{ if ge $auto 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ $autoBar }}"></div>
+                </div>
+                <div class="flex justify-between items-end margin-top-10">
+                  <div class="color-highlight">Other Models</div>
+                  <div class="size-h3 color-highlight">{{ $apiShown }}<span class="color-base size-h5">%</span></div>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-value{{ if ge $api 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ $apiBar }}"></div>
+                </div>
+                <p class="size-h6 color-subdue margin-top-10">
+                  Plan usage limits reset
+                  {{ if gt $planReset.Year 2000 }}
+                    {{ $planReset | formatTime "Jan 2" }}
+                    {{ $planHours := ($planReset.Sub (now)).Hours }}
+                    ·
+                    {{ if lt $planHours 0.0 }}
+                      reset time has passed
+                    {{ else if lt $planHours 24.0 }}
+                      less than a day left
+                    {{ else if eq (toInt (div $planHours 24.0)) 1 }}
+                      1 day left
+                    {{ else }}
+                      {{ toInt (div $planHours 24.0) }} days left
+                    {{ end }}
+                  {{ else }}
+                    date unavailable
+                  {{ end }}
+                  · Cursor Models and Other Models
+                </p>
+                {{ $sand := newRequest "https://cursor.com/api/dashboard/get-sand-usage-status" | withHeader "Accept" "application/json" | withHeader "Content-Type" "application/json" | withHeader "Origin" "https://cursor.com" | withHeader "Referer" "https://cursor.com/dashboard" | withHeader "Cookie" $cookie | withStringBody "{}" | getResponse }}
+                {{ $botPct := -1.0 }}
+                {{ if and (eq $sand.Response.StatusCode 200) ($sand.JSON.Exists "usagePercent") }}
+                  {{ $botPct = $sand.JSON.Float "usagePercent" }}
+                {{ end }}
+                <div class="flex justify-between items-end margin-top-15">
+                  <div>
+                    <div class="color-highlight">Grok Bot</div>
+                    <div class="size-h6 color-subdue">Weekly allowance</div>
+                  </div>
+                  <div class="size-h3 color-highlight">
+                    {{ if ge $botPct 0.0 }}
+                      {{ printf "%.0f" $botPct }}<span class="color-base size-h5">%</span>
+                    {{ else }}
+                      <span class="size-h5 color-negative">unavailable</span>
+                    {{ end }}
+                  </div>
+                </div>
+                {{ if ge $botPct 0.0 }}
+                  {{ $botShown := printf "%.0f" $botPct }}
+                  {{ $botBar := $botShown }}
+                  {{ if gt $botPct 100.0 }}{{ $botBar = "100" }}{{ end }}
+                  <div class="progress-bar">
+                    <div class="progress-value{{ if ge $botPct 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ $botBar }}"></div>
+                  </div>
+                {{ end }}
+                {{ $botEndRaw := $sand.JSON.String "nextResetTimestampUtc" }}
+                {{ $botReset := now }}
+                {{ if eq $sand.Response.StatusCode 200 }}
+                  {{ if findMatch "^[0-9]{13,}$" $botEndRaw }}
+                    {{ $botReset = printf "%d" (div ($sand.JSON.Int "nextResetTimestampUtc") 1000) | parseTime "unix" }}
+                  {{ else if findMatch "^[0-9]{9,12}$" $botEndRaw }}
+                    {{ $botReset = $botEndRaw | parseTime "unix" }}
+                  {{ else if ne $botEndRaw "" }}
+                    {{ $botReset = $botEndRaw | parseTime "rfc3339" }}
                   {{ end }}
                 {{ end }}
-                {{ $included := sub $overall $onDemand }}
-                <div class="flex justify-between gap-10">
-                  <span>Included</span>
-                  <span class="color-highlight">{{ printf "$%.2f" (div $included 100) }}</span>
-                </div>
-                <div class="flex justify-between gap-10 margin-top-5">
-                  <span>On-demand</span>
-                  <span class="color-highlight">{{ printf "$%.2f" (div $onDemand 100) }}</span>
-                </div>
-                {{ if gt $limit 0.0 }}
-                <div class="size-h6 color-subdue">{{ printf "%.0f" (mul (div (div $onDemand 100) $limit) 100) }}% of limit</div>
+                <p class="size-h6 color-subdue margin-top-10">
+                  Weekly reset
+                  {{ if and (eq $sand.Response.StatusCode 200) (gt $botReset.Year 2000) (ne $botEndRaw "") }}
+                    {{ $botReset | formatTime "Jan 2" }}
+                    {{ $botHours := ($botReset.Sub (now)).Hours }}
+                    ·
+                    {{ if lt $botHours 0.0 }}
+                      reset time has passed
+                    {{ else if lt $botHours 24.0 }}
+                      less than a day left
+                    {{ else if eq (toInt (div $botHours 24.0)) 1 }}
+                      1 day left
+                    {{ else }}
+                      {{ toInt (div $botHours 24.0) }} days left
+                    {{ end }}
+                  {{ else }}
+                    date unavailable
+                  {{ end }}
+                  · Grok Bot
+                </p>
                 {{ end }}
-                {{ $startRaw := .JSON.String "subscriptionCycleStart" }}
-                {{ if findMatch "^[0-9]{13,}$" $startRaw }}
-                  {{ $start := printf "%d" (div (.JSON.Int "subscriptionCycleStart") 1000) | parseTime "unix" }}
-                  <div class="size-h6 color-subdue margin-top-10">Cycle started {{ $start | formatTime "Jan 2" }}</div>
-                {{ end }}
-                {{ if gt (.JSON.Int "totalPages") 1 }}
-                <div class="size-h6 color-subdue">Page 1 of {{ .JSON.Int "totalPages" }}</div>
-                {{ end }}
-                <p class="size-h6 color-subdue margin-top-10">Pool % and Grok Bot usage are not in the Admin API.</p>
                 {{ end }}
 
         - size: full
