@@ -13,14 +13,13 @@ service:
   targetPort: 8080
 
 # One-time Cursor session seed. Never put the refresh token or user id here.
-# Create the Secret, then set the name below and redeploy. See README.
+# The Deployment reads Secret glance-cursor-session. Create it before deploy:
 #   kubectl -n <namespace> create secret generic glance-cursor-session \
 #     --from-literal=refresh-token='<cursorAuth/refreshToken>' \
 #     --from-literal=user-id='user_...'
-# Leave sessionSecretName empty until that Secret exists. Glance still starts;
-# the widget says the session did not refresh instead of inventing percentages.
+# The pod will not start until that Secret exists. See README.
 cursor:
-  sessionSecretName: ""
+  sessionSecretName: glance-cursor-session
   refreshTokenSecretKey: refresh-token
   userIdSecretKey: user-id
 

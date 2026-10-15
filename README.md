@@ -70,6 +70,6 @@ One-time setup, on a machine that is already logged into the Cursor app:
      --from-literal=user-id='user_...'
    ```
 
-4. In `deploy/helm/glance/values.yaml`, set `cursor.sessionSecretName` to `glance-cursor-session`. `cursor.refreshTokenSecretKey` defaults to `refresh-token` and `cursor.userIdSecretKey` defaults to `user-id`. Deploy. The Deployment injects those keys as `CURSOR_REFRESH_TOKEN` and `CURSOR_USER_ID`.
+4. `cursor.sessionSecretName` is already `glance-cursor-session`. `cursor.refreshTokenSecretKey` is `refresh-token` and `cursor.userIdSecretKey` is `user-id`. Deploy after the Secret exists. The Deployment injects those keys as `CURSOR_REFRESH_TOKEN` and `CURSOR_USER_ID`. The pod will not start if the Secret is missing.
 
-Until that name is set, both variables are empty strings, Glance still starts, and the card says the session did not refresh. A `shouldLogout: true` response means the seeded refresh token is no longer valid; repeat steps 1 and 3 from a logged-in Cursor app. An older `glance-cursor-admin` secret is unused and can be deleted.
+A `shouldLogout: true` response means the seeded refresh token is no longer valid; repeat steps 1 and 3 from a logged-in Cursor app. An older `glance-cursor-admin` secret is unused and can be deleted.
