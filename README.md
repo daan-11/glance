@@ -33,16 +33,16 @@ The workflow SSHes with Tailscale SSH as `root` to `home-lab.vulture-qilin.ts.ne
 
 ## Cursor spending
 
-The Home page has a **Cursor Pro+** widget. It reads the signed-in plan from Cursor; the percentages are not stored in git.
+The Home page has a small **Cursor** widget in the left column, under the calendar. It calls the [Cursor Admin API](https://cursor.com/docs/account/teams/admin-api) `POST /teams/spend` with the team API key as the Basic auth username and an empty password. The key is not stored in git.
 
-1. In a browser where you are signed in to [cursor.com](https://cursor.com), copy the `WorkosCursorSessionToken` cookie value (the part after `=`). Keep it exactly as the browser sends it, including a `%3A%3A` between the user id and the token if that is how it is stored.
-2. Create a Secret in the Glance namespace. The value is the cookie, not this repository:
+1. Create a team Admin API key in Cursor.
+2. Create a Secret in the Glance namespace. The value is the API key, not this repository:
 
    ```bash
-   kubectl -n <namespace> create secret generic glance-cursor-session \
-     --from-literal=token='<WorkosCursorSessionToken value>'
+   kubectl -n <namespace> create secret generic glance-cursor-admin \
+     --from-literal=api-key='<team admin API key>'
    ```
 
-3. Set `cursor.sessionSecretName` to `glance-cursor-session` in `deploy/helm/glance/values.yaml` (the key defaults to `token`) and deploy. The Deployment injects that key as `CURSOR_SESSION_TOKEN`. Glance substitutes `${CURSOR_SESSION_TOKEN}` into the widget's `Cookie` header.
+3. In `deploy/helm/glance/values.yaml`, set `cursor.adminApiKeySecretName` to `glance-cursor-admin`. `cursor.adminApiKeySecretKey` defaults to `api-key`. Deploy. The Deployment injects that key as `CURSOR_ADMIN_API_KEY`.
 
-Until that name is set, `CURSOR_SESSION_TOKEN` is an empty string, Glance still starts, and the widget shows that usage did not load.
+Until that name is set, `CURSOR_ADMIN_API_KEY` is an empty string, Glance still starts, and the widget shows that spend did not load.

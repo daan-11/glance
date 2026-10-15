@@ -34,12 +34,12 @@ spec:
               containerPort: {{ .Values.containerPort }}
 
           env:
-            - name: CURSOR_SESSION_TOKEN
-              {{- if .Values.cursor.sessionSecretName }}
+            - name: CURSOR_ADMIN_API_KEY
+              {{- if .Values.cursor.adminApiKeySecretName }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.cursor.sessionSecretName | quote }}
-                  key: {{ .Values.cursor.sessionSecretKey | default "token" | quote }}
+                  name: {{ .Values.cursor.adminApiKeySecretName | quote }}
+                  key: {{ .Values.cursor.adminApiKeySecretKey | default "api-key" | quote }}
               {{- else }}
               value: ""
               {{- end }}
