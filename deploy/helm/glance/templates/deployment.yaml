@@ -33,6 +33,26 @@ spec:
             - name: http
               containerPort: {{ .Values.containerPort }}
 
+          env:
+            - name: CURSOR_REFRESH_TOKEN
+              {{- if .Values.cursor.sessionSecretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cursor.sessionSecretName | quote }}
+                  key: {{ .Values.cursor.refreshTokenSecretKey | default "refresh-token" | quote }}
+              {{- else }}
+              value: ""
+              {{- end }}
+            - name: CURSOR_USER_ID
+              {{- if .Values.cursor.sessionSecretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cursor.sessionSecretName | quote }}
+                  key: {{ .Values.cursor.userIdSecretKey | default "user-id" | quote }}
+              {{- else }}
+              value: ""
+              {{- end }}
+
           volumeMounts:
             - name: config
               mountPath: /app/config/glance.yml
