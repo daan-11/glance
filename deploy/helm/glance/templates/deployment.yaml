@@ -33,6 +33,17 @@ spec:
             - name: http
               containerPort: {{ .Values.containerPort }}
 
+          env:
+            - name: CURSOR_SESSION_TOKEN
+              {{- if .Values.cursor.sessionSecretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cursor.sessionSecretName | quote }}
+                  key: {{ .Values.cursor.sessionSecretKey | default "token" | quote }}
+              {{- else }}
+              value: ""
+              {{- end }}
+
           volumeMounts:
             - name: config
               mountPath: /app/config/glance.yml
